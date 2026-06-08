@@ -1,0 +1,27 @@
+{
+	"name": "affiliate-api",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "node src/app.js",
+		"dev": "nodemon src/app.js",
+		"migrate": "node scripts/migrate.js",
+		"seed": "node scripts/seed.js"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"bcryptjs": "^3.0.3",
+		"cors": "^2.8.6",
+		"dotenv": "^17.4.2",
+		"express": "^5.2.1",
+		"pg": "^8.21.0",
+		"postgres": "^3.4.9"
+	},
+	"devDependencies": {
+		"@faker-js/faker": "^10.4.0",
+		"nodemon": "^3.1.14"
+	}
+}
