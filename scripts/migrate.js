@@ -1,5 +1,6 @@
 const pool = require('../src/config/db');
 
+
 const migrate = async () => {
   try {
     await pool.query(`

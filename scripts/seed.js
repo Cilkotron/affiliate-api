@@ -2,6 +2,7 @@ const pool = require('../src/config/db');
 const bcrypt = require('bcryptjs');
 const { faker } = require('@faker-js/faker');
 
+
 const seed = async () => {
 	try {
 		console.log('Deleting tables...');
