@@ -1,9 +1,8 @@
 const pool = require('../src/config/db');
 
-
 const migrate = async () => {
-  try {
-    await pool.query(`
+	try {
+		await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
@@ -88,12 +87,12 @@ const migrate = async () => {
         CREATE INDEX IF NOT EXISTS idx_clicks_link_date ON clicks(link_id, clicked_at);
     `);
 
-    console.log('Migration success!');
-    process.exit(0);
-  } catch (err) {
-    console.error('Migration error', err);
-    process.exit(1);
-  }
+		console.log('Migration success!');
+		process.exit(0);
+	} catch (err) {
+		console.error('Migration error', err);
+		process.exit(1);
+	}
 };
 
 migrate();
