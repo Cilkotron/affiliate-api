@@ -45,6 +45,18 @@ const seed = async () => {
 			'Adidas Creator Club',
 			'Zalando Partner',
 		];
+        const programDescriptions = {
+            'Nike Partner Program': 'Promote Nike footwear, apparel and accessories and earn commission on every sale.',
+            'Amazon Associates': 'Earn by promoting millions of Amazon products across any category.',
+            'Shopify Affiliate': 'Earn recurring commissions by referring new merchants to Shopify.',
+            'eBay Partner Network': 'Promote eBay listings and earn commission on successful purchases.',
+            'Booking.com Affiliate': 'Earn commission by referring travelers to Booking.com accommodations.',
+            'Airbnb Ambassador': 'Refer new hosts to Airbnb and earn when they complete their first booking.',
+            'Apple Services': 'Promote Apple apps, music, and subscriptions through the affiliate program.',
+            'Samsung Affiliate': 'Earn commission promoting Samsung electronics and home appliances.',
+            'Adidas Creator Club': 'Partner with Adidas to promote sportswear and earn on every conversion.',
+            'Zalando Partner': 'Promote Zalando fashion brands and earn commission on completed orders.'
+        };
 		const programIds = [];
 
 		for (const name of programNames) {
@@ -55,7 +67,7 @@ const seed = async () => {
       `,
 				[
 					name,
-					faker.commerce.productDescription(),
+					programDescriptions[name],
 					faker.number.float({ min: 3, max: 20, fractionDigits: 2 }),
 					faker.helpers.arrayElement([
 						'active',
