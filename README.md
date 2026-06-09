@@ -43,6 +43,13 @@ REST API for tracking affiliate marketing programs, links, clicks, and conversio
 - POST /api/auth/register
 - POST /api/auth/login
 
+### Programs Endpoints 
+- GET /api/programs
+- GET /api/programs/:id 
+- POST /api/programs 
+- PUT /api/programs/:id
+- DELETE /aoi/programs/:id
+
 ## Running Tests
 npm test
 
