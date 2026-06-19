@@ -57,7 +57,7 @@ describe('Clicks Routes', () => {
         });
     });
 
-    // GET /api/clicks — admin only, sa paginacijom
+    // GET /api/clicks — admin only with pagination
     describe('GET /api/clicks', () => {
         it('should return paginated clicks as admin', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
@@ -108,7 +108,7 @@ describe('Clicks Routes', () => {
         });
     });
 
-    // GET /api/clicks/affiliate — affiliate vidi svoje klikove
+    // GET /api/clicks/affiliate — affiliate clicks
     describe('GET /api/clicks/affiliate', () => {
         it('should return own clicks as affiliate', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
