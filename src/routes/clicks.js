@@ -1,5 +1,4 @@
-const express = require('express');
-const router = express.Router();
+const router = require('express').Router();
 const { trackClick, getClicks, getMyClicks } = require('../controllers/clicksController');
 const { authenticate, authorizeAdmin } = require('../middleware/auth');
 

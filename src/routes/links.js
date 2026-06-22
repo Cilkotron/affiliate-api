@@ -1,5 +1,4 @@
-const express = require('express');
-const router = express.Router();
+const router = require('express').Router();
 const { getLinks, createLink, deleteLink } = require('../controllers/linksController');
 const { authenticate, authorizeAdmin } = require('../middleware/auth');
 
