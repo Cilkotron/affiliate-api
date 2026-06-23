@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { getLinks, createLink, deleteLink } = require('../controllers/linksController');
-const { authenticate, authorizeAdmin } = require('../middleware/auth');
+const { authenticate, authorizeAdmin } = require('../middleware/auth.ts');
 
 router.get('/', authenticate, authorizeAdmin, getLinks);
 router.get('/affiliate', authenticate, getLinks);

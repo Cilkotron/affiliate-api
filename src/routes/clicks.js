@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { trackClick, getClicks, getMyClicks } = require('../controllers/clicksController');
-const { authenticate, authorizeAdmin } = require('../middleware/auth');
+const { authenticate, authorizeAdmin } = require('../middleware/auth.ts');
 
 router.get('/go/:slug', trackClick);
 router.get('/', authenticate, authorizeAdmin, getClicks);

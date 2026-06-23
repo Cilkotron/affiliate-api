@@ -6,7 +6,7 @@ const {
     updateProgram,
     deleteProgram,
 } = require('../controllers/programsController');
-const { authenticate, authorizeAdmin } = require('../middleware/auth');
+const { authenticate, authorizeAdmin } = require('../middleware/auth.ts');
 
 router.get('/', authenticate, getPrograms);
 router.get('/:id', authenticate, getProgram);
