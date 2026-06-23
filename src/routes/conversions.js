@@ -5,7 +5,7 @@ const {
     getMyConversions,
     updateConversionStatus,
 } = require('../controllers/conversionsController');
-const { authenticate, authorizeAdmin } = require('../middleware/auth.ts');
+const { authenticate, authorizeAdmin } = require('../middleware/auth');
 
 router.post('/', createConversion);                                         // public
 router.get('/', authenticate, authorizeAdmin, getConversions);              // admin

@@ -18,18 +18,28 @@ const createLink = async (req, res) => {
     try {
         const { program_id, original_url } = req.body;
 
-        // Validacija
+        // Validate
         if (!program_id || !original_url) {
             return res.status(400).json({ error: 'program_id and original_url are required' });
         }
 
-        // Proveri affiliate
+        // Check affiliate
         const affiliate = await pool.query(
             'SELECT id FROM affiliates WHERE user_id = $1',
             [req.user.id]
         );
         if (affiliate.rows.length === 0) {
             return res.status(404).json({ error: 'Affiliate not found' });
+        }
+        const affiliate_id = affiliate.rows[0].id;
+
+        // Check affiliate program
+        const membership = await pool.query(
+            'SELECT id FROM affiliate_programs WHERE affiliate_id = $1 AND program_id = $2',
+            [affiliate_id, program_id]
+        );
+        if (membership.rows.length === 0) {
+            return res.status(403).json({ error: 'You have not joined this program' });
         }
 
         const existing = new Set(
@@ -40,7 +50,7 @@ const createLink = async (req, res) => {
             slug = generateSlug();
         } while (existing.has(slug));
 
-        const affiliate_id = affiliate.rows[0].id;
+
         const result = await pool.query(
             'INSERT INTO links (affiliate_id, program_id, slug, original_url) VALUES ($1, $2, $3, $4) RETURNING *',
             [affiliate_id, program_id, slug, original_url]

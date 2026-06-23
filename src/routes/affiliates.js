@@ -6,7 +6,7 @@ const {
   updateAffiliateStatus,
   deleteAffiliate,
 } = require('../controllers/affiliatesController');
-const { authenticate, authorizeAdmin } = require('../middleware/auth.ts');
+const { authenticate, authorizeAdmin } = require('../middleware/auth');
 
 router.get('/', authenticate, authorizeAdmin, getAffiliates);
 router.get('/:id', authenticate, getAffiliate);

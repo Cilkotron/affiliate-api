@@ -59,7 +59,7 @@ describe('Links Routes', () => {
         });
     });
 
-    // GET /api/links/affiliate — affiliate links 
+    // GET /api/links/affiliate — affiliate links
     describe('GET /api/links/affiliate', () => {
         it('should return own links as affiliate', async () => {
             pool.query.mockResolvedValueOnce({ rows: [mockLink] });
@@ -80,58 +80,84 @@ describe('Links Routes', () => {
     });
 
     // POST /api/links
-describe('POST /api/links', () => {
-    it('should create a link as approved affiliate', async () => {
-        pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate postoji
-        pool.query.mockResolvedValueOnce({ rows: [] });           // postojeci slugovi
-        pool.query.mockResolvedValueOnce({ rows: [mockLink] });   // insert
+    describe('POST /api/links', () => {
+        it('should create a link as approved affiliate', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate found
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // membership ok
+            pool.query.mockResolvedValueOnce({ rows: [] }); // existing slugs
+            pool.query.mockResolvedValueOnce({ rows: [mockLink] }); // insert
 
-        const res = await request(app)
-            .post('/api/links')
-            .set('Authorization', `Bearer ${userToken}`)
-            .send({
-                program_id: 1,
-                original_url: 'https://example.com/products',
-            });
+            const res = await request(app)
+                .post('/api/links')
+                .set('Authorization', `Bearer ${userToken}`)
+                .send({
+                    program_id: 1,
+                    original_url: 'https://example.com/products',
+                });
 
-        expect(res.statusCode).toBe(201);
-        expect(res.body).toHaveProperty('slug');
-        expect(res.body).toHaveProperty('original_url', 'https://example.com/products');
+            expect(res.statusCode).toBe(201);
+            expect(res.body).toHaveProperty('slug');
+            expect(res.body).toHaveProperty(
+                'original_url',
+                'https://example.com/products'
+            );
+        });
+
+        it('should fail if affiliate not found', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [] }); // affiliate not found
+
+            const res = await request(app)
+                .post('/api/links')
+                .set('Authorization', `Bearer ${userToken}`)
+                .send({
+                    program_id: 1,
+                    original_url: 'https://example.com/products',
+                });
+
+            expect(res.statusCode).toBe(404);
+            expect(res.body).toHaveProperty('error', 'Affiliate not found');
+        });
+
+        it('should fail if not joined program', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate found
+            pool.query.mockResolvedValueOnce({ rows: [] }); // membership not found
+
+            const res = await request(app)
+                .post('/api/links')
+                .set('Authorization', `Bearer ${userToken}`)
+                .send({
+                    program_id: 1,
+                    original_url: 'https://example.com/products',
+                });
+
+            expect(res.statusCode).toBe(403);
+            expect(res.body).toHaveProperty(
+                'error',
+                'You have not joined this program'
+            );
+        });
+
+        it('should fail without required fields', async () => {
+            const res = await request(app)
+                .post('/api/links')
+                .set('Authorization', `Bearer ${userToken}`)
+                .send({});
+
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty(
+                'error',
+                'program_id and original_url are required'
+            );
+        });
+
+        it('should fail without token', async () => {
+            const res = await request(app)
+                .post('/api/links')
+                .send({ program_id: 1, original_url: 'https://example.com' });
+
+            expect(res.statusCode).toBe(401);
+        });
     });
-
-    it('should fail if affiliate not found', async () => {
-        pool.query.mockResolvedValueOnce({ rows: [] }); // affiliate not found
-
-        const res = await request(app)
-            .post('/api/links')
-            .set('Authorization', `Bearer ${userToken}`)
-            .send({
-                program_id: 1,
-                original_url: 'https://example.com/products',
-            });
-
-        expect(res.statusCode).toBe(404);
-        expect(res.body).toHaveProperty('error', 'Affiliate not found');
-    });
-
-    it('should fail without required fields', async () => {
-        const res = await request(app)
-            .post('/api/links')
-            .set('Authorization', `Bearer ${userToken}`)
-            .send({});
-
-        expect(res.statusCode).toBe(400);
-        expect(res.body).toHaveProperty('error', 'program_id and original_url are required');
-    });
-
-    it('should fail without token', async () => {
-        const res = await request(app)
-            .post('/api/links')
-            .send({ program_id: 1, original_url: 'https://example.com' });
-
-        expect(res.statusCode).toBe(401);
-    });
-});
 
     // DELETE /api/links/:id — only admin
     describe('DELETE /api/links/:id', () => {
@@ -143,7 +169,10 @@ describe('POST /api/links', () => {
                 .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toHaveProperty('message', 'Link deleted successfully');
+            expect(res.body).toHaveProperty(
+                'message',
+                'Link deleted successfully'
+            );
         });
 
         it('should fail as affiliate', async () => {
@@ -162,7 +191,10 @@ describe('POST /api/links', () => {
                 .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.statusCode).toBe(404);
-            expect(res.body).toHaveProperty('error', 'Link not found or unauthorized');
+            expect(res.body).toHaveProperty(
+                'error',
+                'Link not found or unauthorized'
+            );
         });
 
         it('should fail without token', async () => {
@@ -181,7 +213,10 @@ describe('POST /api/links', () => {
                 .set('Authorization', `Bearer ${userToken}`);
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toHaveProperty('message', 'Link deleted successfully');
+            expect(res.body).toHaveProperty(
+                'message',
+                'Link deleted successfully'
+            );
         });
 
         it('should return 404 if link not found or not owned', async () => {
@@ -192,7 +227,10 @@ describe('POST /api/links', () => {
                 .set('Authorization', `Bearer ${userToken}`);
 
             expect(res.statusCode).toBe(404);
-            expect(res.body).toHaveProperty('error', 'Link not found or unauthorized');
+            expect(res.body).toHaveProperty(
+                'error',
+                'Link not found or unauthorized'
+            );
         });
 
         it('should fail without token', async () => {
