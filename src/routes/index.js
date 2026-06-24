@@ -7,6 +7,7 @@ const affiliateProgramsRoutes = require('./affiliatePrograms');
 const linksRoutes = require('./links');
 const clicksRoutes = require('./clicks');
 const conversionsRoutes = require('./conversions');
+const payoutsRoutes = require('./payouts');
 
 
 router.use('/auth', authRoutes);
@@ -16,5 +17,6 @@ router.use('/affiliate-programs', affiliateProgramsRoutes);
 router.use('/links', linksRoutes);
 router.use('/clicks', clicksRoutes);
 router.use('/conversions', conversionsRoutes);
+router.use('/payouts', payoutsRoutes);
 
 module.exports = router;
