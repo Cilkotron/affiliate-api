@@ -1,10 +1,20 @@
 const request = require('supertest');
 const app = require('../app');
 const pool = require('../config/db');
+const getMockClient = async () => {
+    return await pool.connect();
+};
 
-jest.mock('../config/db', () => ({
-    query: jest.fn(),
-}));
+jest.mock('../config/db', () => {
+    const mockClient = {
+        query: jest.fn(),
+        release: jest.fn(),
+    };
+    return {
+        query: jest.fn(),
+        connect: jest.fn().mockResolvedValue(mockClient),
+    };
+});
 
 const jwt = require('jsonwebtoken');
 const adminToken = jwt.sign(
@@ -27,21 +37,27 @@ const mockPayout = {
 };
 
 describe('Payouts Routes', () => {
-    afterEach(() => {
+    afterEach(async () => {
+        const mockClient = await getMockClient();
+        mockClient.query.mockReset();
         jest.clearAllMocks();
     });
 
     // POST /api/payouts
     describe('POST /api/payouts', () => {
         it('should create a payout as affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] });          // affiliate found
-            pool.query.mockResolvedValueOnce({ rows: [{ total: '100.00' }] }); // commissions
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] });          // insert
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] })              // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // affiliate found
+                .mockResolvedValueOnce({ rows: [{ total: '100.00' }] }) // commissions
+                .mockResolvedValueOnce({ rows: [mockPayout] })    // insert
+                .mockResolvedValueOnce({ rows: [] });             // COMMIT
 
             const res = await request(app)
                 .post('/api/payouts')
                 .set('Authorization', `Bearer ${userToken}`)
-                .send({ amount: 50.00 });
+                .send({ amount: 50.0 });
 
             expect(res.statusCode).toBe(201);
             expect(res.body).toHaveProperty('amount');
@@ -49,46 +65,64 @@ describe('Payouts Routes', () => {
         });
 
         it('should create a payout as admin for specific affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] });          // affiliate found
-            pool.query.mockResolvedValueOnce({ rows: [{ total: '100.00' }] }); // commissions
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] });          // insert
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
+                .mockResolvedValueOnce({ rows: [{ total: '100.00' }] }) // commissions
+                .mockResolvedValueOnce({ rows: [mockPayout] }) // insert
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const res = await request(app)
                 .post('/api/payouts')
                 .set('Authorization', `Bearer ${adminToken}`)
-                .send({ affiliate_id: 1, amount: 50.00 });
+                .send({ affiliate_id: 1, amount: 50.0 });
 
             expect(res.statusCode).toBe(201);
             expect(res.body).toHaveProperty('status', 'pending');
         });
 
         it('should fail if affiliate not found', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] })  // BEGIN
+                .mockResolvedValueOnce({ rows: [] })  // affiliate not found
+                .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
                 .post('/api/payouts')
                 .set('Authorization', `Bearer ${userToken}`)
-                .send({ amount: 50.00 });
+                .send({ amount: 50.0 });
 
             expect(res.statusCode).toBe(404);
             expect(res.body).toHaveProperty('error', 'Affiliate not found');
         });
 
         it('should fail if insufficient commissions', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] });         // affiliate found
-            pool.query.mockResolvedValueOnce({ rows: [{ total: '10.00' }] }); // insufficient
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
+                .mockResolvedValueOnce({ rows: [{ total: '10.00' }] }) // insufficient
+                .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
                 .post('/api/payouts')
                 .set('Authorization', `Bearer ${userToken}`)
-                .send({ amount: 50.00 });
+                .send({ amount: 50.0 });
 
             expect(res.statusCode).toBe(400);
-            expect(res.body.error).toContain('Insufficient approved commissions');
+            expect(res.body.error).toContain(
+                'Insufficient approved commissions'
+            );
         });
 
         it('should fail without amount', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate found
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
+                .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
                 .post('/api/payouts')
@@ -102,7 +136,7 @@ describe('Payouts Routes', () => {
         it('should fail without token', async () => {
             const res = await request(app)
                 .post('/api/payouts')
-                .send({ amount: 50.00 });
+                .send({ amount: 50.0 });
 
             expect(res.statusCode).toBe(401);
         });
@@ -112,7 +146,7 @@ describe('Payouts Routes', () => {
     describe('GET /api/payouts', () => {
         it('should return paginated payouts as admin', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] });      // data
+            pool.query.mockResolvedValueOnce({ rows: [mockPayout] }); // data
 
             const res = await request(app)
                 .get('/api/payouts')
@@ -148,7 +182,7 @@ describe('Payouts Routes', () => {
     describe('GET /api/payouts/affiliate', () => {
         it('should return own payouts as affiliate', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] });      // data
+            pool.query.mockResolvedValueOnce({ rows: [mockPayout] }); // data
 
             const res = await request(app)
                 .get('/api/payouts/affiliate')
@@ -183,9 +217,12 @@ describe('Payouts Routes', () => {
     // PUT /api/payouts/:id/status — admin only
     describe('PUT /api/payouts/:id/status', () => {
         it('should update status to paid as admin', async () => {
-            pool.query.mockResolvedValueOnce({
-                rows: [{ ...mockPayout, status: 'paid', paid_at: new Date() }],
-            });
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1, status: 'pending' }] }) // lock payout
+                .mockResolvedValueOnce({ rows: [{ ...mockPayout, status: 'paid', paid_at: new Date() }] }) // update
+                .mockResolvedValueOnce({ rows: [] }); 
 
             const res = await request(app)
                 .put('/api/payouts/1/status')
@@ -204,11 +241,18 @@ describe('Payouts Routes', () => {
                 .send({ status: 'invalid' });
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error', 'Invalid status. Must be pending or paid');
+            expect(res.body).toHaveProperty(
+                'error',
+                'Invalid status. Must be paid'
+            );
         });
 
         it('should return 404 if payout not found', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [] })  // payout not found
+                .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
                 .put('/api/payouts/999/status')
