@@ -1,10 +1,20 @@
 const request = require('supertest');
 const app = require('../app');
 const pool = require('../config/db');
+const getMockClient = async () => {
+    return await pool.connect();
+};
 
-jest.mock('../config/db', () => ({
-    query: jest.fn(),
-}));
+jest.mock('../config/db', () => {
+    const mockClient = {
+        query: jest.fn(),
+        release: jest.fn(),
+    };
+    return {
+        query: jest.fn(),
+        connect: jest.fn().mockResolvedValue(mockClient),
+    };
+});
 
 const jwt = require('jsonwebtoken');
 const adminToken = jwt.sign(
@@ -27,17 +37,23 @@ const mockAffiliateProgram = {
 };
 
 describe('Affiliate Programs Routes', () => {
-    afterEach(() => {
+    afterEach(async () => {
+        const mockClient = await getMockClient();
+        mockClient.query.mockReset();
         jest.clearAllMocks();
     });
 
     // POST /api/affiliate-programs/join/:program_id
     describe('POST /api/affiliate-programs/join/:program_id', () => {
         it('should join a program as approved affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate approved
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // program active
-            pool.query.mockResolvedValueOnce({ rows: [] });           // not already joined
-            pool.query.mockResolvedValueOnce({ rows: [mockAffiliateProgram] }); // insert
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate approved
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // program active
+                .mockResolvedValueOnce({ rows: [] }) // program not active
+                .mockResolvedValueOnce({ rows: [mockAffiliateProgram] }) // insert
+                .mockResolvedValueOnce({ rows: [] }) // COMMIT
 
             const res = await request(app)
                 .post('/api/affiliate-programs/join/1')
@@ -49,7 +65,10 @@ describe('Affiliate Programs Routes', () => {
         });
 
         it('should fail if affiliate not approved', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [] }) // COMMIT
 
             const res = await request(app)
                 .post('/api/affiliate-programs/join/1')
@@ -60,8 +79,12 @@ describe('Affiliate Programs Routes', () => {
         });
 
         it('should fail if program not found or inactive', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate ok
-            pool.query.mockResolvedValueOnce({ rows: [] });           // program not found
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate ok
+                .mockResolvedValueOnce({ rows: [] }) // program not found
+                .mockResolvedValueOnce({ rows: [] }) // COMMIT
 
             const res = await request(app)
                 .post('/api/affiliate-programs/join/999')
@@ -72,9 +95,13 @@ describe('Affiliate Programs Routes', () => {
         });
 
         it('should fail if already joined', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // affiliate ok
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // program ok
-            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // already joined
+             const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate ok
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // program ok 
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // already joined
+                .mockResolvedValueOnce({ rows: [] }) // COMMIT
 
             const res = await request(app)
                 .post('/api/affiliate-programs/join/1')

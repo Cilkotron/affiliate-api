@@ -1,10 +1,20 @@
 const request = require('supertest');
 const app = require('../app');
 const pool = require('../config/db');
+const getMockClient = async () => {
+    return await pool.connect();
+};
 
-jest.mock('../config/db', () => ({
-    query: jest.fn(),
-}));
+jest.mock('../config/db', () => {
+    const mockClient = {
+        query: jest.fn(),
+        release: jest.fn(),
+    };
+    return {
+        query: jest.fn(),
+        connect: jest.fn().mockResolvedValue(mockClient),
+    };
+});
 
 const jwt = require('jsonwebtoken');
 const adminToken = jwt.sign(
@@ -31,24 +41,30 @@ const mockConversion = {
 };
 
 describe('Conversions Routes', () => {
-    afterEach(() => {
+    afterEach(async () => {
+        const mockClient = await getMockClient();
+        mockClient.query.mockReset();
         jest.clearAllMocks();
     });
 
     // POST /api/conversions — public
     describe('POST /api/conversions', () => {
         it('should create a conversion and calculate commission', async () => {
-            pool.query.mockResolvedValueOnce({
-                rows: [{ id: 1, program_id: 1, link_id: 1 }],
-            }); // click + link
-            pool.query.mockResolvedValueOnce({
-                rows: [{ commission_rate: '10.00' }],
-            }); // program commission rate
-            pool.query.mockResolvedValueOnce({ rows: [mockConversion] }); // insert
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({
+                    rows: [{ id: 1, program_id: 1, link_id: 1 }],
+                }) // click + link
+                .mockResolvedValueOnce({ rows: [] }) // no existing conversion
+                .mockResolvedValueOnce({ rows: [{ commission_rate: '10.00' }] }) // program commission rate
+                .mockResolvedValueOnce({ rows: [mockConversion] }) // insert
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const res = await request(app)
                 .post('/api/conversions')
-                .send({ click_id: 1, amount: 100.00 });
+                .send({ click_id: 1, amount: 100.0 });
+            console.log(res);
 
             expect(res.statusCode).toBe(201);
             expect(res.body).toHaveProperty('amount');
@@ -57,23 +73,27 @@ describe('Conversions Routes', () => {
         });
 
         it('should fail if click not found', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            const mockClient = await getMockClient();
+            mockClient.query
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const res = await request(app)
                 .post('/api/conversions')
-                .send({ click_id: 999, amount: 100.00 });
+                .send({ click_id: 999, amount: 100.0 });
 
             expect(res.statusCode).toBe(404);
             expect(res.body).toHaveProperty('error', 'Click not found');
         });
 
         it('should fail without required fields', async () => {
-            const res = await request(app)
-                .post('/api/conversions')
-                .send({});
+            const res = await request(app).post('/api/conversions').send({});
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error', 'click_id and amount are required');
+            expect(res.body).toHaveProperty(
+                'error',
+                'click_id and amount are required'
+            );
         });
     });
 
@@ -186,7 +206,10 @@ describe('Conversions Routes', () => {
                 .send({ status: 'invalid' });
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty('error', 'Invalid status. Must be pending, approved, or paid');
+            expect(res.body).toHaveProperty(
+                'error',
+                'Invalid status. Must be pending, approved, or paid'
+            );
         });
 
         it('should return 404 if conversion not found', async () => {

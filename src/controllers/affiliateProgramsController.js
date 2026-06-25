@@ -1,45 +1,57 @@
 const pool = require('../config/db');
 
 const joinProgram = async (req, res) => {
+    const client = await pool.connect();
     try {
         const { program_id } = req.params;
 
-        // Check if affiliate & status is approved
-        const affiliate = await pool.query(
-            'SELECT id FROM affiliates WHERE user_id = $1 AND status = $2',
+        await client.query('BEGIN');
+
+        // Check affiliate exists and is approved
+        const affiliate = await client.query(
+            'SELECT id FROM affiliates WHERE user_id = $1 AND status = $2 FOR UPDATE',
             [req.user.id, 'approved']
         );
         if (affiliate.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(403).json({ error: 'Affiliate not found or not approved' });
         }
 
-        // Check if program & status is active
-        const program = await pool.query(
+        // Check program exists and is active
+        const program = await client.query(
             'SELECT id FROM programs WHERE id = $1 AND status = $2',
             [program_id, 'active']
         );
         if (program.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Program not found or inactive' });
         }
 
         const affiliate_id = affiliate.rows[0].id;
 
-        // Check affiliate not already using program
-        const existing = await pool.query(
+        // Check if already joined
+        const existing = await client.query(
             'SELECT id FROM affiliate_programs WHERE affiliate_id = $1 AND program_id = $2',
             [affiliate_id, program_id]
         );
         if (existing.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ error: 'Already joined this program' });
         }
 
-        const result = await pool.query(
+        // Insert
+        const result = await client.query(
             'INSERT INTO affiliate_programs (affiliate_id, program_id) VALUES ($1, $2) RETURNING *',
             [affiliate_id, program_id]
         );
+
+        await client.query('COMMIT');
         res.status(201).json(result.rows[0]);
     } catch (err) {
+        await client.query('ROLLBACK');
         res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
     }
 };
 
