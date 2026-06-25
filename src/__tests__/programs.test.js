@@ -12,6 +12,7 @@ const mockProgram = {
     description: 'Promote Nike products',
     commission_rate: '10.00',
     status: 'active',
+    version: 1,
     created_at: new Date(),
 };
 
@@ -108,9 +109,10 @@ describe('Programs Routes', () => {
 
     describe('PUT /api/programs/:id', () => {
         it('should update a program as admin', async () => {
+            pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }] }); // check exists
             pool.query.mockResolvedValueOnce({
                 rows: [{ ...mockProgram, name: 'Updated Program' }],
-            });
+            }); // update
 
             const res = await request(app)
                 .put('/api/programs/1')
@@ -120,6 +122,7 @@ describe('Programs Routes', () => {
                     description: 'Updated description',
                     commission_rate: 15.0,
                     status: 'active',
+                    version: 2
                 });
 
             expect(res.statusCode).toBe(200);
@@ -137,6 +140,7 @@ describe('Programs Routes', () => {
                     description: 'Updated description',
                     commission_rate: 15.0,
                     status: 'active',
+                    version: 2,
                 });
 
             expect(res.statusCode).toBe(404);

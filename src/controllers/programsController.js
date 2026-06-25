@@ -44,15 +44,43 @@ const createProgram = async (req, res) => {
 const updateProgram = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, description, commission_rate, status } = req.body;
-        const result = await pool.query(
-            `UPDATE programs SET name = $1, description = $2, 
-       commission_rate = $3, status = $4 WHERE id = $5 RETURNING *`,
-            [name, description, commission_rate, status, id]
+        const { name, description, commission_rate, status, version } =
+            req.body;
+
+        if (!version) {
+            return res.status(400).json({ error: 'version is required' });
+        }
+
+        // Check if program exists
+        const existing = await pool.query(
+            'SELECT id FROM programs WHERE id = $1',
+            [id]
         );
-        if (result.rows.length === 0) {
+        if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Program not found' });
         }
+
+        // Update with version check
+        const result = await pool.query(
+            `UPDATE programs 
+            SET name = $1, description = $2, commission_rate = $3, status = $4, version = version + 1
+            WHERE id = $5 AND version = $6
+            RETURNING *`,
+            [name, description, commission_rate, status, id, version]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(409).json({ error: 'Program was modified by another request. Please refresh and try again.' });
+        }
+
+        if (result.rows.length === 0) {
+            return res
+                .status(409)
+                .json({
+                    error: 'Program was modified by another request. Please refresh and try again.',
+                });
+        }
+
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });

@@ -56,21 +56,44 @@ const createAffiliate = async (req, res) => {
 };
 
 const updateAffiliateStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
+    try {
+        const { id } = req.params;
+        const { status, version } = req.body;
 
-    const result = await pool.query(`
-      UPDATE affiliates SET status = $1 WHERE id = $2 RETURNING *
-    `, [status, id]);
+        if (!version) {
+            return res.status(400).json({ error: 'version is required' });
+        }
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Affiliate not found' });
+        if (!['pending', 'approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status. Must be pending, approved, or rejected' });
+        }
+
+        // Check if affiliate exists
+        const existing = await pool.query(
+            'SELECT id FROM affiliates WHERE id = $1',
+            [id]
+        );
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: 'Affiliate not found' });
+        }
+
+        // Update with version check
+        const result = await pool.query(
+            `UPDATE affiliates 
+             SET status = $1, version = version + 1
+             WHERE id = $2 AND version = $3
+             RETURNING *`,
+            [status, id, version]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(409).json({ error: 'Affiliate was modified by another request. Please refresh and try again.' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 };
 
 const deleteAffiliate = async (req, res) => {
