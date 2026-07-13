@@ -1,6 +1,19 @@
-const pool = require('../config/db');
+import type { Request, Response } from 'express';
+import pool from '../config/db';
 
-const trackClick = async (req, res) => {
+interface AuthedRequest extends Request {
+    user?: { id: number; role: string };
+}
+
+interface PaginationQuery {
+    page?: string;
+    limit?: string;
+}
+
+export const trackClick = async (
+    req: Request,
+    res: Response
+): Promise<Response | void> => {
     try {
         const { slug } = req.params;
 
@@ -21,21 +34,26 @@ const trackClick = async (req, res) => {
 
         res.redirect(link.original_url);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const getClicks = async (req, res) => {
+export const getClicks = async (
+    req: Request<Record<string, never>, unknown, unknown, PaginationQuery>,
+    res: Response
+): Promise<Response> => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const page = parseInt(req.query.page ?? '1') || 1;
+        const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
 
         const countResult = await pool.query('SELECT COUNT(*) FROM clicks');
         const total = parseInt(countResult.rows[0].count);
 
-        const result = await pool.query(`
-            SELECT 
+        const result = await pool.query(
+            `
+            SELECT
                 c.id,
                 c.ip_address,
                 c.user_agent,
@@ -51,36 +69,46 @@ const getClicks = async (req, res) => {
             JOIN programs p ON l.program_id = p.id
             ORDER BY c.clicked_at DESC
             LIMIT $1 OFFSET $2
-        `, [limit, offset]);
+        `,
+            [limit, offset]
+        );
 
-        res.json({
+        return res.json({
             data: result.rows,
             pagination: {
                 total,
                 page,
                 limit,
                 pages: Math.ceil(total / limit),
-            }
+            },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const getMyClicks = async (req, res) => {
+export const getMyClicks = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response> => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const page = parseInt((req.query.page as string) ?? '1') || 1;
+        const limit = parseInt((req.query.limit as string) ?? '20') || 20;
         const offset = (page - 1) * limit;
 
-        const countResult = await pool.query(`
+        const countResult = await pool.query(
+            `
             SELECT COUNT(*) FROM clicks c
             JOIN links l ON c.link_id = l.id
             WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-        `, [req.user.id]);
+        `,
+            [req.user?.id]
+        );
         const total = parseInt(countResult.rows[0].count);
 
-        const result = await pool.query(`
+        const result = await pool.query(
+            `
             SELECT
                 c.id,
                 c.ip_address,
@@ -95,20 +123,21 @@ const getMyClicks = async (req, res) => {
             WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
             ORDER BY c.clicked_at DESC
             LIMIT $2 OFFSET $3
-        `, [req.user.id, limit, offset]);
+        `,
+            [req.user?.id, limit, offset]
+        );
 
-        res.json({
+        return res.json({
             data: result.rows,
             pagination: {
                 total,
                 page,
                 limit,
                 pages: Math.ceil(total / limit),
-            }
+            },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
-
-module.exports = { trackClick, getClicks, getMyClicks };

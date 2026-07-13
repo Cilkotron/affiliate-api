@@ -1,9 +1,35 @@
-const pool = require('../config/db');
+import type { Request, Response } from 'express';
+import pool from '../config/db';
 
-const createPayout = async (req, res) => {
+interface PayoutBody {
+    affiliate_id: number;
+    amount: number;
+}
+
+interface PaginationQuery {
+    page?: string;
+    limit?: string;
+}
+
+interface AuthedRequest extends Request<
+    Record<string, string>,
+    unknown,
+    PayoutBody,
+    PaginationQuery
+> {
+    user?: {
+        id: number;
+        role: string;
+    };
+}
+
+export const createPayout = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response | void> => {
     const client = await pool.connect();
     try {
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user?.role === 'admin';
 
         await client.query('BEGIN');
 
@@ -11,11 +37,11 @@ const createPayout = async (req, res) => {
         const affiliate = isAdmin
             ? await client.query(
                   'SELECT id FROM affiliates WHERE id = $1 FOR UPDATE',
-                  [req.body.affiliate_id]
+                  [req.body?.affiliate_id]
               )
             : await client.query(
                   'SELECT id FROM affiliates WHERE user_id = $1 FOR UPDATE',
-                  [req.user.id]
+                  [req.user?.id]
               );
 
         if (affiliate.rows.length === 0) {
@@ -24,7 +50,7 @@ const createPayout = async (req, res) => {
         }
 
         const affiliate_id = affiliate.rows[0].id;
-        const { amount } = req.body;
+        const amount  = req.body?.amount;
 
         if (!amount) {
             await client.query('ROLLBACK');
@@ -63,16 +89,20 @@ const createPayout = async (req, res) => {
         res.status(201).json(result.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     } finally {
         client.release();
     }
 };
 
-const getPayouts = async (req, res) => {
+export const getPayouts = async (
+    req: AuthedRequest, 
+    res: Response
+): Promise<Response | void> => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const page = parseInt(req.query.page ?? '1') || 1;
+        const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
 
         const countResult = await pool.query('SELECT COUNT(*) FROM payouts');
@@ -106,14 +136,18 @@ const getPayouts = async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const getMyPayouts = async (req, res) => {
+export const getMyPayouts = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response | void> => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
+        const page = parseInt(req.query.page ?? '1') || 1;
+        const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
 
         const countResult = await pool.query(
@@ -121,7 +155,7 @@ const getMyPayouts = async (req, res) => {
             SELECT COUNT(*) FROM payouts
             WHERE affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
         `,
-            [req.user.id]
+            [req.user?.id]
         );
         const total = parseInt(countResult.rows[0].count);
 
@@ -137,7 +171,7 @@ const getMyPayouts = async (req, res) => {
             ORDER BY p.id DESC
             LIMIT $2 OFFSET $3
         `,
-            [req.user.id, limit, offset]
+            [req.user?.id, limit, offset]
         );
 
         res.json({
@@ -150,11 +184,15 @@ const getMyPayouts = async (req, res) => {
             },
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const updatePayoutStatus = async (req, res) => {
+export const updatePayoutStatus = async (
+    req: Request,
+    res: Response
+): Promise<Response | void> => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -195,10 +233,9 @@ const updatePayoutStatus = async (req, res) => {
         res.json(result.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });;
     } finally {
         client.release();
     }
 };
-
-module.exports = { createPayout, getPayouts, getMyPayouts, updatePayoutStatus };

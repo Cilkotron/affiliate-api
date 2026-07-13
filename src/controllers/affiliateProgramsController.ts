@@ -1,6 +1,14 @@
-const pool = require('../config/db');
+import type { Request, Response } from 'express';
+import pool from '../config/db';
 
-const joinProgram = async (req, res) => {
+interface AuthedRequest extends Request {
+    user?: { id: number | string };
+}
+
+export const joinProgram = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response> => {
     const client = await pool.connect();
     try {
         const { program_id } = req.params;
@@ -10,11 +18,13 @@ const joinProgram = async (req, res) => {
         // Check affiliate exists and is approved
         const affiliate = await client.query(
             'SELECT id FROM affiliates WHERE user_id = $1 AND status = $2 FOR UPDATE',
-            [req.user.id, 'approved']
+            [req.user?.id, 'approved']
         );
         if (affiliate.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(403).json({ error: 'Affiliate not found or not approved' });
+            return res
+                .status(403)
+                .json({ error: 'Affiliate not found or not approved' });
         }
 
         // Check program exists and is active
@@ -24,7 +34,9 @@ const joinProgram = async (req, res) => {
         );
         if (program.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(404).json({ error: 'Program not found or inactive' });
+            return res
+                .status(404)
+                .json({ error: 'Program not found or inactive' });
         }
 
         const affiliate_id = affiliate.rows[0].id;
@@ -36,7 +48,9 @@ const joinProgram = async (req, res) => {
         );
         if (existing.rows.length > 0) {
             await client.query('ROLLBACK');
-            return res.status(409).json({ error: 'Already joined this program' });
+            return res
+                .status(409)
+                .json({ error: 'Already joined this program' });
         }
 
         // Insert
@@ -46,22 +60,26 @@ const joinProgram = async (req, res) => {
         );
 
         await client.query('COMMIT');
-        res.status(201).json(result.rows[0]);
+        return res.status(201).json(result.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     } finally {
         client.release();
     }
 };
 
-const leaveProgram = async (req, res) => {
+export const leaveProgram = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response> => {
     try {
         const { program_id } = req.params;
 
         const affiliate = await pool.query(
             'SELECT id FROM affiliates WHERE user_id = $1',
-            [req.user.id]
+            [req.user?.id]
         );
         if (affiliate.rows.length === 0) {
             return res.status(404).json({ error: 'Affiliate not found' });
@@ -77,15 +95,20 @@ const leaveProgram = async (req, res) => {
             return res.status(404).json({ error: 'Not joined this program' });
         }
 
-        res.json({ message: 'Left program successfully' });
+        return res.json({ message: 'Left program successfully' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const getMyPrograms = async (req, res) => {
+export const getMyPrograms = async (
+    req: AuthedRequest,
+    res: Response
+): Promise<Response> => {
     try {
-        const result = await pool.query(`
+        const result = await pool.query(
+            `
             SELECT
                 ap.id,
                 ap.joined_at,
@@ -98,15 +121,21 @@ const getMyPrograms = async (req, res) => {
             JOIN programs p ON ap.program_id = p.id
             WHERE ap.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
             ORDER BY ap.joined_at DESC
-        `, [req.user.id]);
+        `,
+            [req.user?.id]
+        );
 
-        res.json(result.rows);
+        return res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
 
-const getAllAffiliatePrograms = async (req, res) => {
+export const getAllAffiliatePrograms = async (
+    req: Request,
+    res: Response
+): Promise<Response> => {
     try {
         const result = await pool.query(`
             SELECT
@@ -123,10 +152,9 @@ const getAllAffiliatePrograms = async (req, res) => {
             ORDER BY ap.joined_at DESC
         `);
 
-        res.json(result.rows);
+        return res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        return res.status(500).json({ error: message });
     }
 };
-
-module.exports = { joinProgram, leaveProgram, getMyPrograms, getAllAffiliatePrograms };
