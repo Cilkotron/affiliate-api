@@ -6,8 +6,8 @@
     "scripts": {
         "start": "node dist/server.ts",
         "dev": "nodemon --exec ts-node src/server.ts",
-        "migrate": "ts-node scripts/migrate.js",
-        "seed": "ts-node scripts/seed.js",
+        "migrate": "ts-node scripts/migrate.ts",
+        "seed": "ts-node scripts/seed.ts",
         "test": "npx jest --watchAll"
     },
     "keywords": [],
