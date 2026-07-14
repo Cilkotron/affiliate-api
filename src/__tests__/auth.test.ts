@@ -1,10 +1,26 @@
-const request = require('supertest');
-const app = require('../app');
-const pool = require('../config/db');
+import request from 'supertest';
+import app from '../app';
 
-jest.mock('../config/db', () => ({
-    query: jest.fn(),
-}));
+jest.mock('../config/db', () => {
+    const mc = {
+        query: jest.fn(),
+        release: jest.fn(),
+    };
+    const mp = {
+        query: jest.fn(),
+        connect: jest.fn().mockResolvedValue(mc),
+    };
+    return {
+        default: mp,
+        ...mp,
+    };
+});
+
+const getMockClient = () => {
+    return (pool.connect as jest.Mock).mock.results[0]?.value;
+};
+
+const pool = jest.requireMock('../config/db').default;
 
 describe('Auth Routes', () => {
     afterEach(() => {

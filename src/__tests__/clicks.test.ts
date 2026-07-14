@@ -1,12 +1,28 @@
-const request = require('supertest');
-const app = require('../app');
-const pool = require('../config/db');
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import app from '../app';
 
-jest.mock('../config/db', () => ({
-    query: jest.fn(),
-}));
+jest.mock('../config/db', () => {
+    const mc = {
+        query: jest.fn(),
+        release: jest.fn(),
+    };
+    const mp = {
+        query: jest.fn(),
+        connect: jest.fn().mockResolvedValue(mc),
+    };
+    return {
+        default: mp,
+        ...mp,
+    };
+});
 
-const jwt = require('jsonwebtoken');
+const getMockClient = () => {
+    return (pool.connect as jest.Mock).mock.results[0]?.value;
+};
+
+const pool = jest.requireMock('../config/db').default;
+
 const adminToken = jwt.sign(
     { id: 1, role: 'admin' },
     process.env.JWT_SECRET || 'testsecret'
@@ -41,7 +57,9 @@ describe('Clicks Routes', () => {
             }); // find link
             pool.query.mockResolvedValueOnce({ rows: [] }); // insert click
 
-            const res = await request(app).get('/api/clicks/go/lorem-ipsum-dolor');
+            const res = await request(app).get(
+                '/api/clicks/go/lorem-ipsum-dolor'
+            );
 
             expect(res.statusCode).toBe(302);
             expect(res.headers.location).toBe('https://example.com/products');
@@ -50,7 +68,9 @@ describe('Clicks Routes', () => {
         it('should return 404 if slug not found', async () => {
             pool.query.mockResolvedValueOnce({ rows: [] });
 
-            const res = await request(app).get('/api/clicks/go/non-existent-slug');
+            const res = await request(app).get(
+                '/api/clicks/go/non-existent-slug'
+            );
 
             expect(res.statusCode).toBe(404);
             expect(res.body).toHaveProperty('error', 'Link not found');
@@ -61,7 +81,7 @@ describe('Clicks Routes', () => {
     describe('GET /api/clicks', () => {
         it('should return paginated clicks as admin', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockClick] });       // data
+            pool.query.mockResolvedValueOnce({ rows: [mockClick] }); // data
 
             const res = await request(app)
                 .get('/api/clicks?page=1&limit=20')
@@ -112,7 +132,7 @@ describe('Clicks Routes', () => {
     describe('GET /api/clicks/affiliate', () => {
         it('should return own clicks as affiliate', async () => {
             pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockClick] });       // data
+            pool.query.mockResolvedValueOnce({ rows: [mockClick] }); // data
 
             const res = await request(app)
                 .get('/api/clicks/affiliate')
@@ -122,7 +142,10 @@ describe('Clicks Routes', () => {
             expect(res.body).toHaveProperty('data');
             expect(res.body).toHaveProperty('pagination');
             expect(res.body.data).toHaveLength(1);
-            expect(res.body.data[0]).toHaveProperty('slug', 'lorem-ipsum-dolor');
+            expect(res.body.data[0]).toHaveProperty(
+                'slug',
+                'lorem-ipsum-dolor'
+            );
         });
 
         it('should return empty data if no clicks', async () => {

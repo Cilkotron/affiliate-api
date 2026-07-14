@@ -1,22 +1,28 @@
-const request = require('supertest');
-const app = require('../app');
-const pool = require('../config/db');
-const getMockClient = async () => {
-    return await pool.connect();
-};
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import app from '../app';
 
 jest.mock('../config/db', () => {
-    const mockClient = {
+    const mc = {
         query: jest.fn(),
         release: jest.fn(),
     };
-    return {
+    const mp = {
         query: jest.fn(),
-        connect: jest.fn().mockResolvedValue(mockClient),
+        connect: jest.fn().mockResolvedValue(mc),
+    };
+    return {
+        default: mp,
+        ...mp,
     };
 });
 
-const jwt = require('jsonwebtoken');
+const getMockClient = () => {
+    return (pool.connect as jest.Mock).mock.results[0]?.value;
+};
+
+const pool = jest.requireMock('../config/db').default;
+
 const adminToken = jwt.sign(
     { id: 1, role: 'admin' },
     process.env.JWT_SECRET || 'testsecret'
@@ -42,16 +48,14 @@ const mockConversion = {
 
 describe('Conversions Routes', () => {
     afterEach(async () => {
-        const mockClient = await getMockClient();
-        mockClient.query.mockReset();
         jest.clearAllMocks();
     });
 
     // POST /api/conversions — public
     describe('POST /api/conversions', () => {
         it('should create a conversion and calculate commission', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({
                     rows: [{ id: 1, program_id: 1, link_id: 1 }],
@@ -64,7 +68,6 @@ describe('Conversions Routes', () => {
             const res = await request(app)
                 .post('/api/conversions')
                 .send({ click_id: 1, amount: 100.0 });
-            console.log(res);
 
             expect(res.statusCode).toBe(201);
             expect(res.body).toHaveProperty('amount');
@@ -73,8 +76,8 @@ describe('Conversions Routes', () => {
         });
 
         it('should fail if click not found', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [] }); // COMMIT
 

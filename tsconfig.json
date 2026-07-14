@@ -4,9 +4,11 @@
     "module": "commonjs",
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "types": ["jest", "node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "dist"]
 }

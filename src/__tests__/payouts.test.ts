@@ -1,22 +1,28 @@
-const request = require('supertest');
-const app = require('../app');
-const pool = require('../config/db');
-const getMockClient = async () => {
-    return await pool.connect();
-};
+import request from 'supertest';
+import jwt from 'jsonwebtoken';
+import app from '../app';
 
 jest.mock('../config/db', () => {
-    const mockClient = {
+    const mc = {
         query: jest.fn(),
         release: jest.fn(),
     };
-    return {
+    const mp = {
         query: jest.fn(),
-        connect: jest.fn().mockResolvedValue(mockClient),
+        connect: jest.fn().mockResolvedValue(mc),
+    };
+    return {
+        default: mp,
+        ...mp,
     };
 });
 
-const jwt = require('jsonwebtoken');
+const getMockClient = () => {
+    return (pool.connect as jest.Mock).mock.results[0]?.value;
+};
+
+const pool = jest.requireMock('../config/db').default;
+
 const adminToken = jwt.sign(
     { id: 1, role: 'admin' },
     process.env.JWT_SECRET || 'testsecret'
@@ -38,21 +44,19 @@ const mockPayout = {
 
 describe('Payouts Routes', () => {
     afterEach(async () => {
-        const mockClient = await getMockClient();
-        mockClient.query.mockReset();
         jest.clearAllMocks();
     });
 
     // POST /api/payouts
     describe('POST /api/payouts', () => {
         it('should create a payout as affiliate', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
-                .mockResolvedValueOnce({ rows: [] })              // BEGIN
-                .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // affiliate found
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
                 .mockResolvedValueOnce({ rows: [{ total: '100.00' }] }) // commissions
-                .mockResolvedValueOnce({ rows: [mockPayout] })    // insert
-                .mockResolvedValueOnce({ rows: [] });             // COMMIT
+                .mockResolvedValueOnce({ rows: [mockPayout] }) // insert
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const res = await request(app)
                 .post('/api/payouts')
@@ -65,8 +69,8 @@ describe('Payouts Routes', () => {
         });
 
         it('should create a payout as admin for specific affiliate', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
                 .mockResolvedValueOnce({ rows: [{ total: '100.00' }] }) // commissions
@@ -83,10 +87,10 @@ describe('Payouts Routes', () => {
         });
 
         it('should fail if affiliate not found', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
-                .mockResolvedValueOnce({ rows: [] })  // BEGIN
-                .mockResolvedValueOnce({ rows: [] })  // affiliate not found
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [] }) // affiliate not found
                 .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
@@ -99,8 +103,8 @@ describe('Payouts Routes', () => {
         });
 
         it('should fail if insufficient commissions', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
                 .mockResolvedValueOnce({ rows: [{ total: '10.00' }] }) // insufficient
@@ -118,8 +122,8 @@ describe('Payouts Routes', () => {
         });
 
         it('should fail without amount', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
                 .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
@@ -217,12 +221,16 @@ describe('Payouts Routes', () => {
     // PUT /api/payouts/:id/status — admin only
     describe('PUT /api/payouts/:id/status', () => {
         it('should update status to paid as admin', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1, status: 'pending' }] }) // lock payout
-                .mockResolvedValueOnce({ rows: [{ ...mockPayout, status: 'paid', paid_at: new Date() }] }) // update
-                .mockResolvedValueOnce({ rows: [] }); 
+                .mockResolvedValueOnce({
+                    rows: [
+                        { ...mockPayout, status: 'paid', paid_at: new Date() },
+                    ],
+                }) // update
+                .mockResolvedValueOnce({ rows: [] });
 
             const res = await request(app)
                 .put('/api/payouts/1/status')
@@ -248,10 +256,10 @@ describe('Payouts Routes', () => {
         });
 
         it('should return 404 if payout not found', async () => {
-            const mockClient = await getMockClient();
-            mockClient.query
+            const mc = await pool.connect();
+            (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
-                .mockResolvedValueOnce({ rows: [] })  // payout not found
+                .mockResolvedValueOnce({ rows: [] }) // payout not found
                 .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)
