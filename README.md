@@ -40,15 +40,68 @@ REST API for tracking affiliate marketing programs, links, clicks, and conversio
 ## API Endpoints
 
 ### Auth
-- POST /api/auth/register
-- POST /api/auth/login
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| POST | /api/auth/register | Public | Register new user |
+| POST | /api/auth/login | Public | Login and get JWT token |
 
-### Programs Endpoints 
-- GET /api/programs
-- GET /api/programs/:id 
-- POST /api/programs 
-- PUT /api/programs/:id
-- DELETE /aoi/programs/:id
+### Affiliates
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/affiliates | Admin | Get all affiliates |
+| GET | /api/affiliates/:id | Admin | Get affiliate by ID |
+| POST | /api/affiliates | Authenticated | Create affiliate profile |
+| PUT | /api/affiliates/:id | Admin | Update affiliate status |
+| DELETE | /api/affiliates/:id | Admin | Delete affiliate |
+
+### Programs
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/programs | Authenticated | Get all programs |
+| GET | /api/programs/:id | Authenticated | Get program by ID |
+| POST | /api/programs | Admin | Create program |
+| PUT | /api/programs/:id | Admin | Update program |
+| DELETE | /api/programs/:id | Admin | Delete program |
+
+### Affiliate Programs
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/affiliate-programs | Authenticated | Get my programs |
+| GET | /api/affiliate-programs/all | Admin | Get all affiliate programs |
+| POST | /api/affiliate-programs/join/:program_id | Authenticated | Join a program |
+| DELETE | /api/affiliate-programs/leave/:program_id | Authenticated | Leave a program |
+
+### Links
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/links | Admin | Get all links |
+| GET | /api/links/affiliate | Authenticated | Get my links |
+| POST | /api/links | Authenticated | Create tracking link |
+| DELETE | /api/links/:id | Admin | Delete any link |
+| DELETE | /api/links/affiliate/:id | Authenticated | Delete own link |
+
+### Clicks
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/clicks | Admin | Get all clicks (paginated) |
+| GET | /api/clicks/affiliate | Authenticated | Get my clicks (paginated) |
+| GET | /api/clicks/go/:slug | Public | Track click and redirect |
+
+### Conversions
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/conversions | Admin | Get all conversions (paginated) |
+| GET | /api/conversions/affiliate | Authenticated | Get my conversions (paginated) |
+| POST | /api/conversions | Public | Create conversion |
+| PUT | /api/conversions/:id/status | Admin | Update conversion status |
+
+### Payouts
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| GET | /api/payouts | Admin | Get all payouts (paginated) |
+| GET | /api/payouts/affiliate | Authenticated | Get my payouts (paginated) |
+| POST | /api/payouts | Authenticated | Request payout |
+| PUT | /api/payouts/:id/status | Admin | Mark payout as paid |
 
 ## Running Tests
 npm test
