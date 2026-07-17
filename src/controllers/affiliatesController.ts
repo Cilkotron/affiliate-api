@@ -17,16 +17,68 @@ export const getAffiliates = async (
     res: Response
 ): Promise<Response> => {
     try {
-        const result = await pool.query(`
-            SELECT a.*, u.email
-            FROM affiliates a
-            JOIN users u ON a.user_id = u.id
-            ORDER BY a.created_at DESC
-        `);
-        return res.json(result.rows);
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Number(req.query.limit) || 10, 100);
+        const offset = (page - 1) * limit;
+
+        const status = req.query.status as
+            | 'pending'
+            | 'approved'
+            | 'rejected'
+            | undefined;
+
+        const values: any[] = [];
+        let whereClause = '';
+
+        if (status) {
+            values.push(status);
+            whereClause = `WHERE a.status = $${values.length}`;
+        }
+
+        const limitParam = values.length + 1;
+        const offsetParam = values.length + 2;
+
+        const [affiliatesResult, countResult] = await Promise.all([
+            pool.query(
+                `
+                SELECT a.*, u.email
+                FROM affiliates a
+                JOIN users u ON a.user_id = u.id
+                ${whereClause}
+                ORDER BY a.created_at DESC
+                LIMIT $${limitParam}
+                OFFSET $${offsetParam}
+                `,
+                [...values, limit, offset]
+            ),
+
+            pool.query(
+                `
+                SELECT COUNT(*) AS total
+                FROM affiliates a
+                ${whereClause}
+                `,
+                values
+            ),
+        ]);
+
+        const total = Number(countResult.rows[0].total);
+
+        return res.json({
+            data: affiliatesResult.rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
-        return res.status(500).json({ error: message });
+
+        return res.status(500).json({
+            error: message,
+        });
     }
 };
 
@@ -37,12 +89,15 @@ export const getAffiliate = async (
     try {
         const { id } = req.params;
 
-        const result = await pool.query(`
+        const result = await pool.query(
+            `
             SELECT a.*, u.email
             FROM affiliates a
             JOIN users u ON a.user_id = u.id
             WHERE a.id = $1
-        `, [id]);
+        `,
+            [id]
+        );
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Affiliate not found' });
@@ -72,13 +127,18 @@ export const createAffiliate = async (
             [user_id]
         );
         if (existing.rows.length > 0) {
-            return res.status(400).json({ error: 'Affiliate profile already exists' });
+            return res
+                .status(400)
+                .json({ error: 'Affiliate profile already exists' });
         }
 
-        const result = await pool.query(`
+        const result = await pool.query(
+            `
             INSERT INTO affiliates (user_id, first_name, last_name, website)
             VALUES ($1, $2, $3, $4) RETURNING *
-        `, [user_id, first_name ?? null, last_name ?? null, website ?? null]);
+        `,
+            [user_id, first_name ?? null, last_name ?? null, website ?? null]
+        );
 
         return res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -103,7 +163,11 @@ export const updateAffiliateStatus = async (
             return res.status(400).json({ error: 'version is required' });
         }
 
-        const allowedStatuses: AffiliateStatus[] = ['pending', 'approved', 'rejected'];
+        const allowedStatuses: AffiliateStatus[] = [
+            'pending',
+            'approved',
+            'rejected',
+        ];
         if (!status || !allowedStatuses.includes(status)) {
             return res.status(400).json({
                 error: 'Invalid status. Must be pending, approved, or rejected',
@@ -118,12 +182,15 @@ export const updateAffiliateStatus = async (
             return res.status(404).json({ error: 'Affiliate not found' });
         }
 
-        const result = await pool.query(`
+        const result = await pool.query(
+            `
             UPDATE affiliates
             SET status = $1, version = version + 1
             WHERE id = $2 AND version = $3
             RETURNING *
-        `, [status, id, version]);
+        `,
+            [status, id, version]
+        );
 
         if (result.rows.length === 0) {
             return res.status(409).json({
