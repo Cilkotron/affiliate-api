@@ -53,13 +53,68 @@ export const getLinks = async (
 ): Promise<Response> => {
     try {
         const isAdmin = req.user?.role === 'admin';
-        const query = isAdmin
-            ? 'SELECT * FROM links ORDER BY created_at DESC'
-            : 'SELECT * FROM links WHERE affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1) ORDER BY created_at DESC';
-        const params = isAdmin ? [] : [req.user?.id];
 
-        const result = await pool.query<LinkRow>(query, params);
-        return res.json(result.rows);
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+        const offset = (page - 1) * limit;
+
+        const dataQuery = isAdmin
+            ? `
+        SELECT
+            l.*,
+            a.first_name AS affiliate_first_name,
+            a.last_name AS affiliate_last_name,
+            p.name AS program
+        FROM links l
+        JOIN affiliates a ON a.id = l.affiliate_id
+        JOIN programs p ON p.id = l.program_id
+        ORDER BY l.created_at DESC
+        LIMIT $1 OFFSET $2
+      `
+            : `
+        SELECT
+            l.*,
+            p.name AS program
+        FROM links l
+        JOIN affiliates a ON a.id = l.affiliate_id
+        JOIN programs p ON p.id = l.program_id
+        WHERE a.user_id = $1
+        ORDER BY l.created_at DESC
+        LIMIT $2 OFFSET $3
+      `;
+
+        const countQuery = isAdmin
+            ? `
+        SELECT COUNT(*) AS total
+        FROM links
+      `
+            : `
+        SELECT COUNT(*) AS total
+        FROM links l
+        JOIN affiliates a ON a.id = l.affiliate_id
+        WHERE a.user_id = $1
+      `;
+
+        const params = isAdmin
+            ? [limit, offset]
+            : [req.user!.id, limit, offset];
+
+        const [result, countResult] = await Promise.all([
+            pool.query(dataQuery, params),
+            pool.query(countQuery, isAdmin ? [] : [req.user?.id]),
+        ]);
+
+        const total = Number(countResult.rows[0].total);
+
+        return res.json({
+            data: result.rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         return res.status(500).json({ error: message });
