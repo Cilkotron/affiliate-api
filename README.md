@@ -103,6 +103,10 @@ REST API for tracking affiliate marketing programs, links, clicks, and conversio
 | POST | /api/payouts | Authenticated | Request payout |
 | PUT | /api/payouts/:id/status | Admin | Mark payout as paid |
 
+## Swagger documentation 
+
+/api-docs
+
 ## Running Tests
 npm test
 
