@@ -50,15 +50,19 @@ describe('Affiliates Routes', () => {
 
     describe('GET /api/affiliates', () => {
         it('should return all affiliates as admin', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [mockAffiliate] });
+            pool.query
+                .mockResolvedValueOnce({ rows: [mockAffiliate] }) // affiliates query
+                .mockResolvedValueOnce({ rows: [{ total: '1' }] }); // count query
 
             const res = await request(app)
                 .get('/api/affiliates')
                 .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toHaveLength(1);
-            expect(res.body[0]).toHaveProperty('first_name', 'Sanja');
+            expect(res.body).toHaveProperty('data');
+            expect(res.body.data).toHaveLength(1);
+            expect(res.body.data[0]).toHaveProperty('first_name', 'Sanja');
+            expect(res.body.pagination).toHaveProperty('total', 1);
         });
 
         it('should fail as affiliate', async () => {

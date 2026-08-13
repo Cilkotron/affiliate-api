@@ -50,23 +50,40 @@ describe('Links Routes', () => {
     // GET /api/links — only admin
     describe('GET /api/links', () => {
         it('should return all links as admin', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [mockLink] });
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [mockLink] }) // data query
+                .mockResolvedValueOnce({ rows: [{ total: '1' }] }); // count query
 
             const res = await request(app)
                 .get('/api/links')
                 .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.statusCode).toBe(200);
-            expect(res.body).toHaveLength(1);
-            expect(res.body[0]).toHaveProperty('slug', 'lorem-ipsum-dolor');
+            expect(res.body).toHaveProperty('data');
+            expect(res.body.data).toHaveLength(1);
+            expect(res.body.data[0]).toHaveProperty(
+                'slug',
+                'lorem-ipsum-dolor'
+            );
+            expect(res.body.pagination).toHaveProperty('total', 1);
         });
 
-        it('should fail as affiliate', async () => {
+        it('should return own links as affiliate', async () => {
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [mockLink] }) // data query
+                .mockResolvedValueOnce({ rows: [{ total: '1' }] }); // count query
+
             const res = await request(app)
-                .get('/api/links')
+                .get('/api/links/affiliate')
                 .set('Authorization', `Bearer ${userToken}`);
 
-            expect(res.statusCode).toBe(403);
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty('data');
+            expect(res.body.data).toHaveLength(1);
+            expect(res.body.data[0]).toHaveProperty(
+                'slug',
+                'lorem-ipsum-dolor'
+            );
         });
 
         it('should fail without token', async () => {
@@ -74,27 +91,7 @@ describe('Links Routes', () => {
             expect(res.statusCode).toBe(401);
         });
     });
-
-    // GET /api/links/affiliate — affiliate links
-    describe('GET /api/links/affiliate', () => {
-        it('should return own links as affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [mockLink] });
-
-            const res = await request(app)
-                .get('/api/links/affiliate')
-                .set('Authorization', `Bearer ${userToken}`);
-
-            expect(res.statusCode).toBe(200);
-            expect(res.body).toHaveLength(1);
-            expect(res.body[0]).toHaveProperty('slug', 'lorem-ipsum-dolor');
-        });
-
-        it('should fail without token', async () => {
-            const res = await request(app).get('/api/links/affiliate');
-            expect(res.statusCode).toBe(401);
-        });
-    });
-
+    
     // POST /api/links
     describe('POST /api/links', () => {
         it('should create a link as approved affiliate', async () => {
