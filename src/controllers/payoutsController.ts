@@ -66,7 +66,6 @@ export const createPayout = async (
             AND link_id IN (
                 SELECT id FROM links WHERE affiliate_id = $1
             )
-            FOR UPDATE
         `,
             [affiliate_id]
         );
