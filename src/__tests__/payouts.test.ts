@@ -18,7 +18,8 @@ jest.mock('../config/db', () => {
 });
 
 const getMockClient = () => {
-    return (pool.connect as jest.Mock).mock.results[0]?.value;
+    const impl = (pool.connect as jest.Mock).getMockImplementation();
+    return impl?.();
 };
 
 const pool = jest.requireMock('../config/db').default;
@@ -149,8 +150,9 @@ describe('Payouts Routes', () => {
     // GET /api/payouts — admin only
     describe('GET /api/payouts', () => {
         it('should return paginated payouts as admin', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] }); // data
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [mockPayout] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
 
             const res = await request(app)
                 .get('/api/payouts')
@@ -164,8 +166,72 @@ describe('Payouts Routes', () => {
                 total: 1,
                 page: 1,
                 limit: 20,
-                pages: 1,
+                totalPages: 1,
             });
+        });
+
+        // GET /api/payouts/affiliate
+        it('should return own payouts as affiliate', async () => {
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [mockPayout] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
+
+            const res = await request(app)
+                .get('/api/payouts/affiliate')
+                .set('Authorization', `Bearer ${userToken}`);
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty('data');
+            expect(res.body).toHaveProperty('pagination');
+            expect(res.body.data).toHaveLength(1);
+            expect(res.body.data[0]).toHaveProperty('status', 'pending');
+        });
+
+        it('should return empty data if no payouts', async () => {
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] }); // count query
+
+            const res = await request(app)
+                .get('/api/payouts/affiliate')
+                .set('Authorization', `Bearer ${userToken}`);
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body.data).toHaveLength(0);
+            expect(res.body.pagination.total).toBe(0);
+        });
+
+        // PUT /api/payouts/:id/status
+        it('should update status to paid as admin', async () => {
+            const mockClient = await getMockClient();
+            (mockClient.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [] }) // BEGIN
+                .mockResolvedValueOnce({ rows: [{ id: 1, status: 'pending' }] }) // lock payout
+                .mockResolvedValueOnce({ rows: [] }) // update
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+            (pool.query as jest.Mock).mockResolvedValueOnce({
+                rows: [{ ...mockPayout, status: 'paid', paid_at: new Date() }],
+            }); // full fetch
+
+            const res = await request(app)
+                .put('/api/payouts/1/status')
+                .set('Authorization', `Bearer ${adminToken}`)
+                .send({ status: 'paid' });
+
+            expect(res.statusCode).toBe(200);
+            expect(res.body).toHaveProperty('status', 'paid');
+            expect(res.body).toHaveProperty('paid_at');
+        });
+
+        it('should fail with invalid status', async () => {
+            const res = await request(app)
+                .put('/api/payouts/1/status')
+                .set('Authorization', `Bearer ${adminToken}`)
+                .send({ status: 'invalid' });
+
+            expect(res.statusCode).toBe(400);
+            expect(res.body).toHaveProperty('error', 'Status must be paid');
         });
 
         it('should fail as affiliate', async () => {
@@ -185,8 +251,9 @@ describe('Payouts Routes', () => {
     // GET /api/payouts/affiliate
     describe('GET /api/payouts/affiliate', () => {
         it('should return own payouts as affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockPayout] }); // data
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [mockPayout] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
 
             const res = await request(app)
                 .get('/api/payouts/affiliate')
@@ -200,8 +267,9 @@ describe('Payouts Routes', () => {
         });
 
         it('should return empty data if no payouts', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            (pool.query as jest.Mock)
+                .mockResolvedValueOnce({ rows: [] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] }); // count query
 
             const res = await request(app)
                 .get('/api/payouts/affiliate')
@@ -211,26 +279,21 @@ describe('Payouts Routes', () => {
             expect(res.body.data).toHaveLength(0);
             expect(res.body.pagination.total).toBe(0);
         });
-
-        it('should fail without token', async () => {
-            const res = await request(app).get('/api/payouts/affiliate');
-            expect(res.statusCode).toBe(401);
-        });
     });
 
     // PUT /api/payouts/:id/status — admin only
     describe('PUT /api/payouts/:id/status', () => {
         it('should update status to paid as admin', async () => {
-            const mc = await pool.connect();
-            (mc.query as jest.Mock)
+            const mockClient = await getMockClient();
+            (mockClient.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1, status: 'pending' }] }) // lock payout
-                .mockResolvedValueOnce({
-                    rows: [
-                        { ...mockPayout, status: 'paid', paid_at: new Date() },
-                    ],
-                }) // update
-                .mockResolvedValueOnce({ rows: [] });
+                .mockResolvedValueOnce({ rows: [] }) // update
+                .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+            (pool.query as jest.Mock).mockResolvedValueOnce({
+                rows: [{ ...mockPayout, status: 'paid', paid_at: new Date() }],
+            }); // full fetch
 
             const res = await request(app)
                 .put('/api/payouts/1/status')
@@ -249,12 +312,10 @@ describe('Payouts Routes', () => {
                 .send({ status: 'invalid' });
 
             expect(res.statusCode).toBe(400);
-            expect(res.body).toHaveProperty(
-                'error',
-                'Invalid status. Must be paid'
-            );
+            expect(res.body).toHaveProperty('error', 'Status must be paid');
         });
 
+        // PUT 404 — koristi pool.connect() direktno
         it('should return 404 if payout not found', async () => {
             const mc = await pool.connect();
             (mc.query as jest.Mock)

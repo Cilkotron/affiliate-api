@@ -9,6 +9,7 @@ interface PayoutBody {
 interface PaginationQuery {
     page?: string;
     limit?: string;
+    status?: 'pending' | 'paid';
 }
 
 interface AuthedRequest extends Request<
@@ -50,7 +51,7 @@ export const createPayout = async (
         }
 
         const affiliate_id = affiliate.rows[0].id;
-        const amount  = req.body?.amount;
+        const amount = req.body?.amount;
 
         if (!amount) {
             await client.query('ROLLBACK');
@@ -96,42 +97,60 @@ export const createPayout = async (
 };
 
 export const getPayouts = async (
-    req: AuthedRequest, 
+    req: AuthedRequest,
     res: Response
-): Promise<Response | void> => {
+): Promise<Response> => {
     try {
         const page = parseInt(req.query.page ?? '1') || 1;
         const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
+        const status = req.query.status;
 
-        const countResult = await pool.query('SELECT COUNT(*) FROM payouts');
+        const values: unknown[] = [];
+        let whereClause = '';
+
+        if (status) {
+            values.push(status);
+            whereClause = `WHERE p.status = $${values.length}`;
+        }
+
+        const [result, countResult] = await Promise.all([
+            pool.query(
+                `
+                SELECT
+                    p.id,
+                    p.amount,
+                    p.status,
+                    p.paid_at,
+                    a.id as affiliate_id,
+                    a.first_name,
+                    a.last_name
+                FROM payouts p
+                JOIN affiliates a ON p.affiliate_id = a.id
+                ${whereClause}
+                ORDER BY p.id DESC
+                LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+            `,
+                [...values, limit, offset]
+            ),
+            pool.query(
+                `
+                SELECT COUNT(*) FROM payouts p
+                ${whereClause}
+            `,
+                values
+            ),
+        ]);
+
         const total = parseInt(countResult.rows[0].count);
 
-        const result = await pool.query(
-            `
-            SELECT
-                p.id,
-                p.amount,
-                p.status,
-                p.paid_at,
-                a.id as affiliate_id,
-                a.first_name,
-                a.last_name
-            FROM payouts p
-            JOIN affiliates a ON p.affiliate_id = a.id
-            ORDER BY p.id DESC
-            LIMIT $1 OFFSET $2
-        `,
-            [limit, offset]
-        );
-
-        res.json({
+        return res.json({
             data: result.rows,
             pagination: {
                 total,
                 page,
                 limit,
-                pages: Math.ceil(total / limit),
+                totalPages: Math.ceil(total / limit),
             },
         });
     } catch (err) {
@@ -143,43 +162,56 @@ export const getPayouts = async (
 export const getMyPayouts = async (
     req: AuthedRequest,
     res: Response
-): Promise<Response | void> => {
+): Promise<Response> => {
     try {
         const page = parseInt(req.query.page ?? '1') || 1;
         const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
+        const status = req.query.status;
 
-        const countResult = await pool.query(
-            `
-            SELECT COUNT(*) FROM payouts
-            WHERE affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-        `,
-            [req.user?.id]
-        );
+        const values: unknown[] = [req.user?.id];
+        let statusClause = '';
+
+        if (status) {
+            values.push(status);
+            statusClause = `AND p.status = $${values.length}`;
+        }
+
+        const [result, countResult] = await Promise.all([
+            pool.query(
+                `
+                SELECT
+                    p.id,
+                    p.amount,
+                    p.status,
+                    p.paid_at
+                FROM payouts p
+                WHERE p.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
+                ${statusClause}
+                ORDER BY p.id DESC
+                LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+            `,
+                [...values, limit, offset]
+            ),
+            pool.query(
+                `
+                SELECT COUNT(*) FROM payouts p
+                WHERE p.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
+                ${statusClause}
+            `,
+                values
+            ),
+        ]);
+
         const total = parseInt(countResult.rows[0].count);
 
-        const result = await pool.query(
-            `
-            SELECT
-                p.id,
-                p.amount,
-                p.status,
-                p.paid_at
-            FROM payouts p
-            WHERE p.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-            ORDER BY p.id DESC
-            LIMIT $2 OFFSET $3
-        `,
-            [req.user?.id, limit, offset]
-        );
-
-        res.json({
+        return res.json({
             data: result.rows,
             pagination: {
                 total,
                 page,
                 limit,
-                pages: Math.ceil(total / limit),
+                totalPages: Math.ceil(total / limit),
             },
         });
     } catch (err) {
@@ -197,14 +229,12 @@ export const updatePayoutStatus = async (
         const { id } = req.params;
         const { status } = req.body;
 
-        // Only allow changing status to paid
         if (status !== 'paid') {
-            return res.status(400).json({ error: 'Invalid status. Must be paid' });
+            return res.status(400).json({ error: 'Status must be paid' });
         }
 
         await client.query('BEGIN');
 
-        // Lock payout row
         const existing = await client.query(
             'SELECT id, status FROM payouts WHERE id = $1 FOR UPDATE',
             [id]
@@ -215,7 +245,6 @@ export const updatePayoutStatus = async (
             return res.status(404).json({ error: 'Payout not found' });
         }
 
-        // Prevent marking already paid payout as paid again
         if (existing.rows[0].status === 'paid') {
             await client.query('ROLLBACK');
             return res
@@ -223,17 +252,36 @@ export const updatePayoutStatus = async (
                 .json({ error: 'Payout already marked as paid' });
         }
 
-        const result = await client.query(
-            'UPDATE payouts SET status = $1, paid_at = $2 WHERE id = $3 RETURNING *',
+        await client.query(
+            'UPDATE payouts SET status = $1, paid_at = $2 WHERE id = $3',
             [status, new Date(), id]
         );
 
         await client.query('COMMIT');
-        res.json(result.rows[0]);
+
+        // Return full payout with affiliate
+        const full = await pool.query(
+            `
+            SELECT
+                p.id,
+                p.amount,
+                p.status,
+                p.paid_at,
+                a.id as affiliate_id,
+                a.first_name,
+                a.last_name
+            FROM payouts p
+            JOIN affiliates a ON p.affiliate_id = a.id
+            WHERE p.id = $1
+        `,
+            [id]
+        );
+
+        return res.json(full.rows[0]);
     } catch (err) {
         await client.query('ROLLBACK');
         const message = err instanceof Error ? err.message : 'Unknown error';
-        return res.status(500).json({ error: message });;
+        return res.status(500).json({ error: message });
     } finally {
         client.release();
     }
