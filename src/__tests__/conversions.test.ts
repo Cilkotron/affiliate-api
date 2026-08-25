@@ -102,12 +102,14 @@ describe('Conversions Routes', () => {
 
     // GET /api/conversions — admin only
     describe('GET /api/conversions', () => {
+        // GET /api/conversions
         it('should return paginated conversions as admin', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockConversion] }); // data
+            pool.query
+                .mockResolvedValueOnce({ rows: [mockConversion] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
 
             const res = await request(app)
-                .get('/api/conversions?page=1&limit=20')
+                .get('/api/conversions')
                 .set('Authorization', `Bearer ${adminToken}`);
 
             expect(res.statusCode).toBe(200);
@@ -118,7 +120,7 @@ describe('Conversions Routes', () => {
                 total: 1,
                 page: 1,
                 limit: 20,
-                pages: 1,
+                totalPages: 1,
             });
         });
 
@@ -139,8 +141,9 @@ describe('Conversions Routes', () => {
     // GET /api/conversions/affiliate — affiliate vidi svoje
     describe('GET /api/conversions/affiliate', () => {
         it('should return own conversions as affiliate', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count
-            pool.query.mockResolvedValueOnce({ rows: [mockConversion] }); // data
+            pool.query
+                .mockResolvedValueOnce({ rows: [mockConversion] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '1' }] }); // count query
 
             const res = await request(app)
                 .get('/api/conversions/affiliate')
@@ -154,8 +157,9 @@ describe('Conversions Routes', () => {
         });
 
         it('should return empty data if no conversions', async () => {
-            pool.query.mockResolvedValueOnce({ rows: [{ count: '0' }] });
-            pool.query.mockResolvedValueOnce({ rows: [] });
+            pool.query
+                .mockResolvedValueOnce({ rows: [] }) // data query
+                .mockResolvedValueOnce({ rows: [{ count: '0' }] }); // count query
 
             const res = await request(app)
                 .get('/api/conversions/affiliate')
@@ -175,9 +179,13 @@ describe('Conversions Routes', () => {
     // PUT /api/conversions/:id/status — admin only
     describe('PUT /api/conversions/:id/status', () => {
         it('should update status to approved as admin', async () => {
-            pool.query.mockResolvedValueOnce({
-                rows: [{ ...mockConversion, status: 'approved' }],
-            });
+            pool.query
+                .mockResolvedValueOnce({
+                    rows: [{ ...mockConversion, status: 'approved' }],
+                }) // update
+                .mockResolvedValueOnce({
+                    rows: [{ ...mockConversion, status: 'approved' }],
+                }); // full fetch
 
             const res = await request(app)
                 .put('/api/conversions/1/status')
@@ -189,9 +197,13 @@ describe('Conversions Routes', () => {
         });
 
         it('should update status to paid as admin', async () => {
-            pool.query.mockResolvedValueOnce({
-                rows: [{ ...mockConversion, status: 'paid' }],
-            });
+            pool.query
+                .mockResolvedValueOnce({
+                    rows: [{ ...mockConversion, status: 'paid' }],
+                }) // update
+                .mockResolvedValueOnce({
+                    rows: [{ ...mockConversion, status: 'paid' }],
+                }); // full fetch
 
             const res = await request(app)
                 .put('/api/conversions/1/status')

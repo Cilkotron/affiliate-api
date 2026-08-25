@@ -8,6 +8,7 @@ interface AuthedRequest extends Request {
 interface PaginationQuery {
     page?: string;
     limit?: string;
+    status?: 'pending' | 'approved' | 'paid';
 }
 
 type ConversionStatus = 'pending' | 'approved' | 'paid';
@@ -104,33 +105,51 @@ export const getConversions = async (
         const page = parseInt(req.query.page ?? '1') || 1;
         const limit = parseInt(req.query.limit ?? '20') || 20;
         const offset = (page - 1) * limit;
+        const status = req.query.status;
 
-        const countResult = await pool.query(
-            'SELECT COUNT(*) FROM conversions'
-        );
+        const values: unknown[] = [];
+        let whereClause = '';
+
+        if (status) {
+            values.push(status);
+            whereClause = `WHERE cv.status = $${values.length}`;
+        }
+
+        const [result, countResult] = await Promise.all([
+            pool.query(
+                `
+                SELECT
+                    cv.id,
+                    cv.amount,
+                    cv.commission,
+                    cv.status,
+                    cv.created_at,
+                    a.first_name,
+                    a.last_name,
+                    p.name as program_name,
+                    l.slug
+                FROM conversions cv
+                JOIN links l ON cv.link_id = l.id
+                JOIN affiliates a ON l.affiliate_id = a.id
+                JOIN programs p ON l.program_id = p.id
+                ${whereClause}
+                ORDER BY cv.created_at DESC
+                LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+            `,
+                [...values, limit, offset]
+            ),
+
+            pool.query(
+                `
+                SELECT COUNT(*) FROM conversions cv
+                JOIN links l ON cv.link_id = l.id
+                JOIN affiliates a ON l.affiliate_id = a.id
+                ${whereClause}
+            `,
+                values
+            ),
+        ]);
         const total = parseInt(countResult.rows[0].count);
-
-        const result = await pool.query(
-            `
-            SELECT
-                cv.id,
-                cv.amount,
-                cv.commission,
-                cv.status,
-                cv.created_at,
-                a.first_name,
-                a.last_name,
-                p.name as program_name,
-                l.slug
-            FROM conversions cv
-            JOIN links l ON cv.link_id = l.id
-            JOIN affiliates a ON l.affiliate_id = a.id
-            JOIN programs p ON l.program_id = p.id
-            ORDER BY cv.created_at DESC
-            LIMIT $1 OFFSET $2
-        `,
-            [limit, offset]
-        );
 
         return res.json({
             data: result.rows,
@@ -138,7 +157,7 @@ export const getConversions = async (
                 total,
                 page,
                 limit,
-                pages: Math.ceil(total / limit),
+                totalPages: Math.ceil(total / limit),
             },
         });
     } catch (err) {
@@ -155,36 +174,50 @@ export const getMyConversions = async (
         const page = parseInt((req.query.page as string) ?? '1') || 1;
         const limit = parseInt((req.query.limit as string) ?? '20') || 20;
         const offset = (page - 1) * limit;
+        const status = req.query.status as string | undefined;
 
-        const countResult = await pool.query(
-            `
-            SELECT COUNT(*) FROM conversions cv
-            JOIN links l ON cv.link_id = l.id
-            WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-        `,
-            [req.user?.id]
-        );
+        const values: unknown[] = [req.user?.id];
+        let statusClause = '';
+
+        if (status) {
+            values.push(status);
+            statusClause = `AND cv.status = $${values.length}`;
+        }
+
+        const [result, countResult] = await Promise.all([
+            pool.query(
+                `
+                SELECT
+                    cv.id,
+                    cv.amount,
+                    cv.commission,
+                    cv.status,
+                    cv.created_at,
+                    p.name as program_name,
+                    l.slug
+                FROM conversions cv
+                JOIN links l ON cv.link_id = l.id
+                JOIN programs p ON l.program_id = p.id
+                WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
+                ${statusClause}
+                ORDER BY cv.created_at DESC
+                LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+            `,
+                [...values, limit, offset]
+            ),
+
+            pool.query(
+                `
+                SELECT COUNT(*) FROM conversions cv
+                JOIN links l ON cv.link_id = l.id
+                WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
+                ${statusClause}
+            `,
+                values
+            ),
+        ]);
+
         const total = parseInt(countResult.rows[0].count);
-
-        const result = await pool.query(
-            `
-            SELECT
-                cv.id,
-                cv.amount,
-                cv.commission,
-                cv.status,
-                cv.created_at,
-                p.name as program_name,
-                l.slug
-            FROM conversions cv
-            JOIN links l ON cv.link_id = l.id
-            JOIN programs p ON l.program_id = p.id
-            WHERE l.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-            ORDER BY cv.created_at DESC
-            LIMIT $2 OFFSET $3
-        `,
-            [req.user?.id, limit, offset]
-        );
 
         return res.json({
             data: result.rows,
@@ -192,7 +225,7 @@ export const getMyConversions = async (
                 total,
                 page,
                 limit,
-                pages: Math.ceil(total / limit),
+                totalPages: Math.ceil(total / limit),
             },
         });
     } catch (err) {
@@ -221,7 +254,10 @@ export const updateConversionStatus = async (
         }
 
         const result = await pool.query(
-            'UPDATE conversions SET status = $1 WHERE id = $2 RETURNING *',
+            `
+            UPDATE conversions SET status = $1 WHERE id = $2
+            RETURNING id, amount, commission, status, created_at
+        `,
             [status, id]
         );
 
@@ -229,7 +265,29 @@ export const updateConversionStatus = async (
             return res.status(404).json({ error: 'Conversion not found' });
         }
 
-        return res.json(result.rows[0]);
+        // Fetch full conversion with joins
+        const full = await pool.query(
+            `
+            SELECT
+                cv.id,
+                cv.amount,
+                cv.commission,
+                cv.status,
+                cv.created_at,
+                a.first_name,
+                a.last_name,
+                p.name as program_name,
+                l.slug
+            FROM conversions cv
+            JOIN links l ON cv.link_id = l.id
+            JOIN affiliates a ON l.affiliate_id = a.id
+            JOIN programs p ON l.program_id = p.id
+            WHERE cv.id = $1
+        `,
+            [id]
+        );
+
+        return res.json(full.rows[0]);
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         return res.status(500).json({ error: message });
