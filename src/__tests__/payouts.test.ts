@@ -105,10 +105,13 @@ describe('Payouts Routes', () => {
 
         it('should fail if insufficient commissions', async () => {
             const mc = await pool.connect();
+
             (mc.query as jest.Mock)
                 .mockResolvedValueOnce({ rows: [] }) // BEGIN
                 .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // affiliate found
-                .mockResolvedValueOnce({ rows: [{ total: '10.00' }] }) // insufficient
+                .mockResolvedValueOnce({
+                    rows: [{ id: 1, commission: '10.00' }],
+                }) // commissions
                 .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const res = await request(app)

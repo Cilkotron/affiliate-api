@@ -4,6 +4,7 @@ import {
     getPayouts,
     getMyPayouts,
     updatePayoutStatus,
+    getAvailableCommissions,
 } from '../controllers/payoutsController';
 import { authenticate, authorizeAdmin } from '../middleware/auth';
 
@@ -228,5 +229,29 @@ router.get('/affiliate', authenticate, getMyPayouts);
  *         description: Payout already marked as paid
  */
 router.put('/:id/status', authenticate, authorizeAdmin, updatePayoutStatus);
+
+/**
+ * @swagger
+ * /payouts/available:
+ *   get:
+ *     summary: Get available commissions for payout
+ *     tags: [Payouts]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Available amount
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 available:
+ *                   type: number
+ *                   example: 150.00
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/available', authenticate, getAvailableCommissions);
 
 export default router;

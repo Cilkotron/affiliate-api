@@ -73,6 +73,9 @@ const migrate = async () => {
         paid_at TIMESTAMP
       );
 
+      ALTER TABLE payouts
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
         -- Single index
         CREATE INDEX IF NOT EXISTS idx_links_affiliate_id ON links(affiliate_id);
         CREATE INDEX IF NOT EXISTS idx_clicks_link_id ON clicks(link_id);

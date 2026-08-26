@@ -58,20 +58,26 @@ export const createPayout = async (
             return res.status(400).json({ error: 'amount is required' });
         }
 
-        // Lock all relevant conversions and calculate available commissions
-        const commissionsResult = await client.query(
+        // Lock approved conversions and calculate available
+        const conversionsResult = await client.query(
             `
-            SELECT COALESCE(SUM(commission), 0) as total
-            FROM conversions
-            WHERE status = 'approved'
-            AND link_id IN (
-                SELECT id FROM links WHERE affiliate_id = $1
-            )
-        `,
+                SELECT id, commission
+                FROM conversions
+                WHERE status = 'approved'
+                AND link_id IN (
+                    SELECT id
+                    FROM links
+                    WHERE affiliate_id = $1
+                )
+                FOR UPDATE
+	        `,
             [affiliate_id]
         );
 
-        const totalCommissions = parseFloat(commissionsResult.rows[0].total);
+        const totalCommissions = conversionsResult.rows.reduce(
+            (total, conversion) => total + Number(conversion.commission),
+            0
+        );
         if (amount > totalCommissions) {
             await client.query('ROLLBACK');
             return res.status(400).json({
@@ -86,7 +92,10 @@ export const createPayout = async (
         );
 
         await client.query('COMMIT');
-        res.status(201).json(result.rows[0]);
+        return res.status(201).json({
+            ...result.rows[0],
+            totalCommission: totalCommissions - Number(amount),
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         const message = err instanceof Error ? err.message : 'Unknown error';
@@ -122,6 +131,7 @@ export const getPayouts = async (
                     p.amount,
                     p.status,
                     p.paid_at,
+                    p.created_at,
                     a.id as affiliate_id,
                     a.first_name,
                     a.last_name
@@ -176,29 +186,40 @@ export const getMyPayouts = async (
             values.push(status);
             statusClause = `AND p.status = $${values.length}`;
         }
-
         const [result, countResult] = await Promise.all([
             pool.query(
                 `
-                SELECT
-                    p.id,
-                    p.amount,
-                    p.status,
-                    p.paid_at
-                FROM payouts p
-                WHERE p.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-                ${statusClause}
-                ORDER BY p.id DESC
-                LIMIT $${values.length + 1} OFFSET $${values.length + 2}
-            `,
+		SELECT
+			p.id,
+			p.amount,
+			p.status,
+			p.paid_at, 
+            p.created_at
+		FROM payouts p
+		WHERE p.affiliate_id = (
+			SELECT id
+			FROM affiliates
+			WHERE user_id = $1
+		)
+		${statusClause}
+		ORDER BY p.id DESC
+		LIMIT $${values.length + 1}
+		OFFSET $${values.length + 2}
+		`,
                 [...values, limit, offset]
             ),
+
             pool.query(
                 `
-                SELECT COUNT(*) FROM payouts p
-                WHERE p.affiliate_id = (SELECT id FROM affiliates WHERE user_id = $1)
-                ${statusClause}
-            `,
+		SELECT COUNT(*)
+		FROM payouts p
+		WHERE p.affiliate_id = (
+			SELECT id
+			FROM affiliates
+			WHERE user_id = $1
+		)
+		${statusClause}
+		`,
                 values
             ),
         ]);
@@ -267,6 +288,7 @@ export const updatePayoutStatus = async (
                 p.amount,
                 p.status,
                 p.paid_at,
+                p.created_at,
                 a.id as affiliate_id,
                 a.first_name,
                 a.last_name
@@ -285,4 +307,52 @@ export const updatePayoutStatus = async (
     } finally {
         client.release();
     }
+};
+
+export const getAvailableCommissions = async (
+	req: AuthedRequest,
+	res: Response
+): Promise<Response> => {
+	try {
+		const result = await pool.query(
+			`
+			SELECT
+				GREATEST(
+					COALESCE(SUM(c.commission), 0) -
+					COALESCE((
+						SELECT SUM(p.amount)
+						FROM payouts p
+						WHERE p.affiliate_id = (
+							SELECT id
+							FROM affiliates
+							WHERE user_id = $1
+						)
+						AND p.status = 'pending'
+					), 0),
+					0
+				) AS available
+			FROM conversions c
+			WHERE c.status = 'approved'
+			AND c.link_id IN (
+				SELECT id
+				FROM links
+				WHERE affiliate_id = (
+					SELECT id
+					FROM affiliates
+					WHERE user_id = $1
+				)
+			)
+			`,
+			[req.user?.id]
+		);
+
+        console.log(result.rows[0])
+
+		return res.json({
+			available: parseFloat(result.rows[0].available),
+		});
+	} catch (err) {
+		const message = err instanceof Error ? err.message : 'Unknown error';
+		return res.status(500).json({ error: message });
+	}
 };
