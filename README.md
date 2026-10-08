@@ -121,3 +121,49 @@ npm test
 | DB_USER      | Database user                |
 | DB_PASSWORD  | Database password            |
 | JWT_SECRET   | Secret key for JWT tokens    |
+
+## Docker
+
+### Development with Docker Compose
+
+1. Ensure Docker is installed and running
+2. Ensure `.env` file is configured with your Supabase credentials
+3. Run the development container:
+
+```bash
+npm run docker:dev
+```
+
+Or manually:
+
+```bash
+docker-compose up --build
+```
+
+The API will be available at `http://localhost:3000`
+
+### Production Docker Build
+
+Build and run the production container:
+
+```bash
+npm run docker:prod
+```
+
+Or manually:
+
+```bash
+# Build production image
+docker build -t affiliate-api-prod --target production .
+
+# Run container
+docker run --name affiliate-api-prod -p 3000:3000 --env-file .env affiliate-api-prod
+```
+
+### Docker Commands
+
+- Build development image: `docker-compose build`
+- Start development container: `docker-compose up`
+- Stop containers: `docker-compose down`
+- View logs: `docker-compose logs -f`
+- Rebuild without cache: `docker-compose build --no-cache`

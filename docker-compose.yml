@@ -1,0 +1,21 @@
+
+services:
+  api:
+    build:
+      context: .
+      target: development
+    image: affiliate-api-dev
+    container_name: affiliate-api-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+    env_file:
+      - .env
+    restart: unless-stopped
