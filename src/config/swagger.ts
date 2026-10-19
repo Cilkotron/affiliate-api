@@ -11,8 +11,12 @@ const options: swaggerJsdoc.Options = {
         },
         servers: [
             {
-                url: 'http://localhost:3000/api',
-                description: 'Development server',
+                url: 'http://localhost:3001/api',
+                description: 'Development server (HTTP for Swagger UI)',
+            },
+            {
+                url: 'https://localhost:3000/api',
+                description: 'Development server (HTTPS)',
             },
         ],
         components: {

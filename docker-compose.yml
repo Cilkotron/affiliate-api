@@ -8,8 +8,12 @@ services:
     container_name: affiliate-api-dev
     ports:
       - "3000:3000"
+      - "3001:3001"
+    volumes:
+      - ./.certs:/app/.certs
     environment:
       - PORT=3000
+      - NODE_ENV=development
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}

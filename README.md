@@ -140,7 +140,7 @@ Or manually:
 docker-compose up --build
 ```
 
-The API will be available at `http://localhost:3000`
+The API will be available at `https://localhost:3000`
 
 ### Production Docker Build
 
